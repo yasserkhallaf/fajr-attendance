@@ -405,12 +405,6 @@ export default function App() {
             <input style={inputStyle()} type="password" placeholder="كلمة المرور" value={login.password} onChange={(e) => setLogin({ ...login, password: e.target.value })} />
             {loginErr ? <div style={{ color: '#dc2626', fontSize: 14 }}>{loginErr}</div> : null}
             <button style={buttonStyle()} onClick={handleLogin}>دخول</button>
-            <div style={{ background:'#f3f4f6', padding:12, borderRadius:10, fontSize:13, lineHeight:1.8 }}>
-              admin / 1234<br />
-              dharma / 1234<br />
-              hanakya / 1234<br />
-              kdmi / 1234
-            </div>
           </div>
         </div>
       </div>

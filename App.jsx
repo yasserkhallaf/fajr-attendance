@@ -411,7 +411,7 @@ export default function AttendanceWebApp() {
             </div>
             {loginErr ? <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-2xl p-3">{loginErr}</div> : null}
             <Button className="w-full rounded-2xl h-11 text-base" onClick={handleLogin}>دخول</Button>
-            <div className="text-center text-xs text-slate-400 pt-2">Design by Yasser Khallaf</div>
+            <div className="text-center text-xs text-slate-400 pt-2">Design by YASSER KHALLAF </div>
           </CardContent>
         </Card>
       </div>

@@ -511,7 +511,7 @@ export default function App() {
                 boxShadow: '0 14px 30px rgba(15,23,42,0.18)'
               }}
             >
-              ف
+              <img src="/logo.png" style={{ width: 40 }} />
             </div>
 
             <h1 style={{ margin: '0 0 8px 0', fontSize: 34, fontWeight: 900, color: '#0f172a' }}>

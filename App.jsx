@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
@@ -96,6 +95,7 @@ function exportCsv(filename, rows) {
     alert('لا توجد بيانات للتصدير')
     return
   }
+
   const headers = Object.keys(rows[0])
   const csv = [
     headers.join(','),
@@ -113,38 +113,75 @@ function exportCsv(filename, rows) {
   URL.revokeObjectURL(url)
 }
 
-function cardStyle() {
+function cardStyle(extra = {}) {
   return {
-    background: '#fff',
-    borderRadius: 18,
+    background: '#ffffff',
+    borderRadius: 22,
     padding: 18,
-    boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-    border: '1px solid #eceef4'
+    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.06)',
+    border: '1px solid #e9edf5',
+    ...extra
+  }
+}
+
+function statCardStyle() {
+  return {
+    ...cardStyle(),
+    minHeight: 110,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between'
   }
 }
 
 function inputStyle() {
   return {
     width: '100%',
-    padding: '10px 12px',
-    borderRadius: 10,
-    border: '1px solid #d5d9e3',
-    background: '#fff'
+    padding: '12px 14px',
+    borderRadius: 12,
+    border: '1px solid #d6dce8',
+    background: '#ffffff',
+    outline: 'none',
+    fontSize: 14,
+    color: '#111827'
+  }
+}
+
+function labelStyle() {
+  return {
+    marginBottom: 6,
+    color: '#475569',
+    fontSize: 13,
+    fontWeight: 700
   }
 }
 
 function buttonStyle(kind = 'primary') {
   const common = {
-    padding: '10px 14px',
-    borderRadius: 10,
+    padding: '11px 16px',
+    borderRadius: 12,
     border: 'none',
     cursor: 'pointer',
-    fontWeight: 700
+    fontWeight: 700,
+    fontSize: 14,
+    transition: 'all 0.2s ease'
   }
-  if (kind === 'secondary') return { ...common, background: '#e5e7eb', color: '#111827' }
-  if (kind === 'outline') return { ...common, background: '#fff', color: '#111827', border: '1px solid #d1d5db' }
+
+  if (kind === 'secondary') return { ...common, background: '#e9eef6', color: '#0f172a' }
+  if (kind === 'outline') return { ...common, background: '#fff', color: '#111827', border: '1px solid #d6dce8' }
   if (kind === 'danger') return { ...common, background: '#dc2626', color: '#fff' }
-  return { ...common, background: '#111827', color: '#fff' }
+
+  return { ...common, background: '#0f172a', color: '#fff' }
+}
+
+function sectionTitleStyle() {
+  return {
+    marginTop: 0,
+    marginBottom: 16,
+    fontSize: 26,
+    fontWeight: 800,
+    color: '#0f172a'
+  }
 }
 
 function Tabs({ active, setActive }) {
@@ -153,20 +190,29 @@ function Tabs({ active, setActive }) {
     ['reports', 'التقارير'],
     ['setup', 'الإعداد']
   ]
+
   return (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
       {tabs.map(([key, label]) => (
         <button
           key={key}
           onClick={() => setActive(key)}
           style={{
             ...buttonStyle(active === key ? 'primary' : 'outline'),
-            minWidth: 120
+            minWidth: 140
           }}
         >
           {label}
         </button>
       ))}
+    </div>
+  )
+}
+
+function NumberValue({ value }) {
+  return (
+    <div style={{ fontSize: 34, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
+      {value}
     </div>
   )
 }
@@ -203,19 +249,27 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (user && envReady) loadAll()
+    if (user && envReady) {
+      loadAll()
+    }
   }, [user])
 
   async function loadAll() {
     setLoading(true)
+
     const [sitesRes, workersRes, attendanceRes] = await Promise.all([
       supabase.from('sites').select('*').order('name'),
       supabase.from('workers').select('*').order('employee_no'),
-      supabase.from('attendance').select('*, workers(name, employee_no, site_name, job_title, wage_type, daily_rate)').order('attendance_date', { ascending: false })
+      supabase
+        .from('attendance')
+        .select('*, workers(name, employee_no, site_name, job_title, wage_type, daily_rate)')
+        .order('attendance_date', { ascending: false })
     ])
+
     if (!sitesRes.error) setSites(sitesRes.data || [])
     if (!workersRes.error) setWorkers(workersRes.data || [])
     if (!attendanceRes.error) setAttendance(attendanceRes.data || [])
+
     setLoading(false)
   }
 
@@ -224,6 +278,7 @@ export default function App() {
       setLoginErr('متغيرات Supabase غير مضافة')
       return
     }
+
     const { data, error } = await supabase
       .from('users_profile')
       .select('username, password, display_name, role')
@@ -235,7 +290,12 @@ export default function App() {
       return
     }
 
-    const logged = { username: data.username, name: data.display_name, role: data.role }
+    const logged = {
+      username: data.username,
+      name: data.display_name,
+      role: data.role
+    }
+
     setUser(logged)
     localStorage.setItem('fajr_user_v3', JSON.stringify(logged))
     setLoginErr('')
@@ -248,10 +308,13 @@ export default function App() {
 
   async function seedDatabase() {
     if (!envReady) return
+
     setLoading(true)
     const uniqueSites = [...new Set(seedWorkers.map((w) => w.site_name).filter(Boolean))].map((name) => ({ name }))
+
     await supabase.from('sites').upsert(uniqueSites, { onConflict: 'name' })
     await supabase.from('workers').upsert(seedWorkers, { onConflict: 'employee_no' })
+
     await loadAll()
     setLoading(false)
     alert('تمت تعبئة البيانات الأساسية')
@@ -259,6 +322,7 @@ export default function App() {
 
   async function addWorker() {
     if (!envReady) return
+
     const payload = {
       employee_no: newWorker.employee_no,
       name: newWorker.name,
@@ -268,11 +332,14 @@ export default function App() {
       daily_rate: Number(newWorker.daily_rate || 30),
       is_active: true
     }
+
     const { error } = await supabase.from('workers').insert(payload)
+
     if (error) {
       alert(error.message)
       return
     }
+
     setNewWorker({
       employee_no: '',
       name: '',
@@ -281,13 +348,16 @@ export default function App() {
       wage_type: 'شهري',
       daily_rate: 30
     })
+
     await loadAll()
     alert('تمت إضافة الموظف')
   }
 
   async function saveAttendance(workerId, current) {
     if (!envReady) return
+
     const worker = workers.find((w) => w.id === workerId)
+
     const payload = {
       attendance_date: selectedDate,
       worker_id: workerId,
@@ -297,11 +367,16 @@ export default function App() {
       supervisor_username: user?.username || '',
       recorded_site: recordedSite === 'الكل' ? (worker?.site_name || '') : recordedSite
     }
-    const { error } = await supabase.from('attendance').upsert(payload, { onConflict: 'attendance_date,worker_id' })
+
+    const { error } = await supabase
+      .from('attendance')
+      .upsert(payload, { onConflict: 'attendance_date,worker_id' })
+
     if (error) {
       alert(error.message)
       return
     }
+
     await loadAll()
   }
 
@@ -315,7 +390,10 @@ export default function App() {
 
   const dailyRows = useMemo(() => {
     return visibleWorkers.map((worker) => {
-      const row = attendance.find((a) => a.attendance_date === selectedDate && a.worker_id === worker.id)
+      const row = attendance.find(
+        (a) => a.attendance_date === selectedDate && a.worker_id === worker.id
+      )
+
       return {
         ...worker,
         status: row?.status || 'حاضر',
@@ -328,11 +406,14 @@ export default function App() {
   const monthlyRows = useMemo(() => {
     const filtered = attendance.filter((a) => a.attendance_date?.startsWith(selectedMonth))
     const grouped = {}
+
     filtered.forEach((a) => {
       const w = a.workers
       if (!w) return
       if (siteFilter !== 'الكل' && w.site_name !== siteFilter) return
+
       const key = a.worker_id
+
       if (!grouped[key]) {
         grouped[key] = {
           الرقم_الوظيفي: w.employee_no,
@@ -349,12 +430,14 @@ export default function App() {
           الإجمالي: 0
         }
       }
+
       if (a.status === 'حاضر') grouped[key].أيام_الحضور += 1
       if (a.status === 'غائب') grouped[key].أيام_الغياب += 1
       if (a.status === 'إجازة') grouped[key].أيام_الإجازة += 1
       if (a.status === 'راحة') grouped[key].أيام_الراحة += 1
       grouped[key].ساعات_إضافية += Number(a.overtime_hours || 0)
     })
+
     return Object.values(grouped).map((r) => ({
       ...r,
       الإجمالي: r.أيام_الحضور * r.الأجر_اليومي + r.ساعات_إضافية * 5
@@ -382,6 +465,7 @@ export default function App() {
         المشرف: a.supervisor_username || '',
         ملاحظات: a.notes || ''
       }))
+
     exportCsv(`attendance-${selectedMonth}.csv`, rows)
   }
 
@@ -391,20 +475,116 @@ export default function App() {
 
   if (!user) {
     return (
-      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 16 }}>
-        <div style={{ ...cardStyle(), width: '100%', maxWidth: 420 }}>
-          <h1 style={{ marginTop: 0 }}>دخول النظام</h1>
-          <p style={{ color: '#6b7280' }}>نظام حضور العمال والإضافي</p>
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'grid',
+          placeItems: 'center',
+          padding: 16,
+          background:
+            'linear-gradient(135deg, #eef2ff 0%, #f8fafc 45%, #edf7f2 100%)'
+        }}
+      >
+        <div
+          style={{
+            ...cardStyle({
+              width: '100%',
+              maxWidth: 460,
+              padding: 26,
+              borderRadius: 26
+            })
+          }}
+        >
+          <div style={{ textAlign: 'center', marginBottom: 22 }}>
+            <div
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: 20,
+                margin: '0 auto 14px',
+                background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+                color: '#fff',
+                display: 'grid',
+                placeItems: 'center',
+                fontSize: 30,
+                fontWeight: 800,
+                boxShadow: '0 14px 30px rgba(15,23,42,0.18)'
+              }}
+            >
+              ف
+            </div>
+
+            <h1 style={{ margin: '0 0 8px 0', fontSize: 34, fontWeight: 900, color: '#0f172a' }}>
+              فجر الطرق
+            </h1>
+
+            <p style={{ color: '#64748b', margin: 0, fontSize: 15 }}>
+              نظام حضور العمال والإضافي
+            </p>
+          </div>
+
           {!envReady && (
-            <div style={{ background: '#fff7ed', border: '1px solid #fdba74', padding: 12, borderRadius: 10, marginBottom: 12 }}>
+            <div
+              style={{
+                background: '#fff7ed',
+                border: '1px solid #fdba74',
+                padding: 12,
+                borderRadius: 12,
+                marginBottom: 14,
+                color: '#9a3412',
+                fontSize: 14
+              }}
+            >
               أضف متغيرات البيئة في Vercel حتى يعمل النظام.
             </div>
           )}
+
           <div style={{ display: 'grid', gap: 12 }}>
-            <input style={inputStyle()} placeholder="اسم المستخدم" value={login.username} onChange={(e) => setLogin({ ...login, username: e.target.value })} />
-            <input style={inputStyle()} type="password" placeholder="كلمة المرور" value={login.password} onChange={(e) => setLogin({ ...login, password: e.target.value })} />
-            {loginErr ? <div style={{ color: '#dc2626', fontSize: 14 }}>{loginErr}</div> : null}
-            <button style={buttonStyle()} onClick={handleLogin}>دخول</button>
+            <input
+              style={inputStyle()}
+              placeholder="اسم المستخدم"
+              value={login.username}
+              onChange={(e) => setLogin({ ...login, username: e.target.value })}
+            />
+
+            <input
+              style={inputStyle()}
+              type="password"
+              placeholder="كلمة المرور"
+              value={login.password}
+              onChange={(e) => setLogin({ ...login, password: e.target.value })}
+            />
+
+            {loginErr ? (
+              <div
+                style={{
+                  color: '#dc2626',
+                  fontSize: 14,
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  padding: 10,
+                  borderRadius: 12
+                }}
+              >
+                {loginErr}
+              </div>
+            ) : null}
+
+            <button
+              style={{
+                ...buttonStyle(),
+                padding: '13px 16px',
+                borderRadius: 14,
+                fontSize: 15
+              }}
+              onClick={handleLogin}
+            >
+              دخول
+            </button>
+
+            <div style={{ marginTop: 6, fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
+              Design by Yasser Khallaf
+            </div>
           </div>
         </div>
       </div>
@@ -412,159 +592,401 @@ export default function App() {
   }
 
   return (
-    <div style={{ padding: 16, maxWidth: 1400, margin: '0 auto' }}>
-      <div style={{ ...cardStyle(), marginBottom: 16 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', gap:12, flexWrap:'wrap', alignItems:'center' }}>
-          <div>
-            <h1 style={{ margin:'0 0 6px 0' }}>نظام حضور العمال والإضافي</h1>
-            <div style={{ color:'#6b7280' }}>مرحبًا {user.name}</div>
-          </div>
-          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-            <button style={buttonStyle('secondary')} onClick={exportAttendanceReport}>تصدير الحضور</button>
-            <button style={buttonStyle('secondary')} onClick={exportPayrollReport}>تصدير الرواتب</button>
-            <button style={buttonStyle('outline')} onClick={logout}>خروج</button>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:12, marginBottom:16 }}>
-        <div style={cardStyle()}><div style={{ color:'#6b7280' }}>العمال النشطون</div><div style={{ fontSize:28, fontWeight:700 }}>{stats.workers}</div></div>
-        <div style={cardStyle()}><div style={{ color:'#6b7280' }}>أيام الحضور</div><div style={{ fontSize:28, fontWeight:700 }}>{stats.attendanceDays}</div></div>
-        <div style={cardStyle()}><div style={{ color:'#6b7280' }}>ساعات الإضافي</div><div style={{ fontSize:28, fontWeight:700 }}>{stats.overtime}</div></div>
-        <div style={cardStyle()}><div style={{ color:'#6b7280' }}>إجمالي المستحق</div><div style={{ fontSize:28, fontWeight:700 }}>{stats.payroll}</div></div>
-      </div>
-
-      <div style={{ ...cardStyle(), marginBottom: 16 }}>
-        <Tabs active={tab} setActive={setTab} />
-      </div>
-
-      {tab === 'attendance' && (
-        <div style={cardStyle()}>
-          <h2 style={{ marginTop:0 }}>التسجيل اليومي</h2>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:12, marginBottom:16 }}>
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#f5f7fb',
+        padding: 16
+      }}
+    >
+      <div style={{ maxWidth: 1450, margin: '0 auto' }}>
+        <div
+          style={{
+            ...cardStyle({
+              marginBottom: 16,
+              padding: 22,
+              borderRadius: 26
+            })
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 16,
+              flexWrap: 'wrap',
+              alignItems: 'center'
+            }}
+          >
             <div>
-              <div style={{ marginBottom:6 }}>التاريخ</div>
-              <input style={inputStyle()} type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
+              <div style={{ color: '#16a34a', fontSize: 13, fontWeight: 800, marginBottom: 6 }}>
+                FAJR ROADS
+              </div>
+              <h1 style={{ margin: '0 0 6px 0', fontSize: 34, fontWeight: 900, color: '#0f172a' }}>
+                نظام حضور العمال والإضافي
+              </h1>
+              <div style={{ color: '#64748b', fontSize: 15 }}>
+                مرحبًا {user.name}
+              </div>
             </div>
-            <div>
-              <div style={{ marginBottom:6 }}>موقع التسجيل اليوم</div>
-              <select style={inputStyle()} value={recordedSite} onChange={(e) => setRecordedSite(e.target.value)}>
-                <option value="الكل">الكل</option>
-                {sites.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <div style={{ marginBottom:6 }}>فلترة الموقع</div>
-              <select style={inputStyle()} value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
-                <option value="الكل">الكل</option>
-                {sites.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <div style={{ marginBottom:6 }}>بحث</div>
-              <input style={inputStyle()} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="اسم العامل أو الرقم الوظيفي" />
-            </div>
-          </div>
 
-          <div style={{ overflowX:'auto', border:'1px solid #e5e7eb', borderRadius:12 }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', minWidth:1000, background:'#fff' }}>
-              <thead>
-                <tr style={{ background:'#f9fafb' }}>
-                  {['الرقم','الاسم','المسمى','الموقع','الحالة','الإضافي','ملاحظات','حفظ'].map((h) => (
-                    <th key={h} style={{ textAlign:'right', padding:12, borderBottom:'1px solid #e5e7eb' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {dailyRows.map((row) => (
-                  <AttendanceRow
-                    key={row.id}
-                    row={row}
-                    onSave={(payload) => saveAttendance(row.id, payload)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {tab === 'reports' && (
-        <div style={cardStyle()}>
-          <h2 style={{ marginTop:0 }}>التقارير الشهرية</h2>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:12, marginBottom:16 }}>
-            <div>
-              <div style={{ marginBottom:6 }}>الشهر</div>
-              <input style={inputStyle()} type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} />
-            </div>
-            <div>
-              <div style={{ marginBottom:6 }}>الموقع</div>
-              <select style={inputStyle()} value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
-                <option value="الكل">الكل</option>
-                {sites.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
-              </select>
-            </div>
-            <div style={{ display:'flex', alignItems:'end', gap:8 }}>
-              <button style={buttonStyle('secondary')} onClick={exportAttendanceReport}>تصدير حضور</button>
-              <button style={buttonStyle('secondary')} onClick={exportPayrollReport}>تصدير رواتب</button>
-            </div>
-          </div>
-
-          <div style={{ overflowX:'auto', border:'1px solid #e5e7eb', borderRadius:12 }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', minWidth:1200, background:'#fff' }}>
-              <thead>
-                <tr style={{ background:'#f9fafb' }}>
-                  {monthlyRows[0] ? Object.keys(monthlyRows[0]).map((h) => (
-                    <th key={h} style={{ textAlign:'right', padding:12, borderBottom:'1px solid #e5e7eb' }}>{h}</th>
-                  )) : <th style={{ textAlign:'right', padding:12 }}>لا توجد بيانات</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {monthlyRows.map((row, idx) => (
-                  <tr key={idx}>
-                    {Object.values(row).map((v, i) => (
-                      <td key={i} style={{ padding:12, borderBottom:'1px solid #f1f5f9' }}>{v}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {tab === 'setup' && (
-        <div style={{ display:'grid', gridTemplateColumns:'1.2fr 1fr', gap:16 }}>
-          <div style={cardStyle()}>
-            <h2 style={{ marginTop:0 }}>إعداد قاعدة البيانات</h2>
-            <div style={{ background:'#f3f4f6', borderRadius:12, padding:12, whiteSpace:'pre-wrap', fontSize:12, maxHeight:420, overflow:'auto' }}>
-              {setupSql}
-            </div>
-            <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:12 }}>
-              <button style={buttonStyle()} onClick={seedDatabase} disabled={loading}>تعبئة البيانات الأساسية</button>
-              <button
-                style={buttonStyle('outline')}
-                onClick={() => navigator.clipboard.writeText(setupSql).then(() => alert('تم نسخ SQL'))}
-              >
-                نسخ SQL
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button style={buttonStyle('secondary')} onClick={exportAttendanceReport}>
+                تصدير الحضور
+              </button>
+              <button style={buttonStyle('secondary')} onClick={exportPayrollReport}>
+                تصدير الرواتب
+              </button>
+              <button style={buttonStyle('outline')} onClick={logout}>
+                خروج
               </button>
             </div>
           </div>
+        </div>
 
-          <div style={cardStyle()}>
-            <h2 style={{ marginTop:0 }}>إضافة موظف</h2>
-            <div style={{ display:'grid', gap:10 }}>
-              <input style={inputStyle()} placeholder="الرقم الوظيفي" value={newWorker.employee_no} onChange={(e) => setNewWorker({ ...newWorker, employee_no: e.target.value })} />
-              <input style={inputStyle()} placeholder="اسم الموظف" value={newWorker.name} onChange={(e) => setNewWorker({ ...newWorker, name: e.target.value })} />
-              <input style={inputStyle()} placeholder="المسمى الوظيفي" value={newWorker.job_title} onChange={(e) => setNewWorker({ ...newWorker, job_title: e.target.value })} />
-              <input style={inputStyle()} placeholder="الموقع" value={newWorker.site_name} onChange={(e) => setNewWorker({ ...newWorker, site_name: e.target.value })} />
-              <input style={inputStyle()} placeholder="نوع الأجر" value={newWorker.wage_type} onChange={(e) => setNewWorker({ ...newWorker, wage_type: e.target.value })} />
-              <input style={inputStyle()} type="number" placeholder="الأجر اليومي" value={newWorker.daily_rate} onChange={(e) => setNewWorker({ ...newWorker, daily_rate: e.target.value })} />
-              <button style={buttonStyle()} onClick={addWorker}>حفظ الموظف</button>
-            </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 14,
+            marginBottom: 16
+          }}
+        >
+          <div style={statCardStyle()}>
+            <div style={{ color: '#64748b', fontWeight: 700 }}>العمال النشطون</div>
+            <NumberValue value={stats.workers} />
+          </div>
+
+          <div style={statCardStyle()}>
+            <div style={{ color: '#64748b', fontWeight: 700 }}>أيام الحضور</div>
+            <NumberValue value={stats.attendanceDays} />
+          </div>
+
+          <div style={statCardStyle()}>
+            <div style={{ color: '#64748b', fontWeight: 700 }}>ساعات الإضافي</div>
+            <NumberValue value={stats.overtime} />
+          </div>
+
+          <div style={statCardStyle()}>
+            <div style={{ color: '#64748b', fontWeight: 700 }}>إجمالي المستحق</div>
+            <NumberValue value={stats.payroll} />
           </div>
         </div>
-      )}
+
+        <div style={{ ...cardStyle({ marginBottom: 16, padding: 14 }) }}>
+          <Tabs active={tab} setActive={setTab} />
+        </div>
+
+        {tab === 'attendance' && (
+          <div style={cardStyle({ borderRadius: 24 })}>
+            <h2 style={sectionTitleStyle()}>التسجيل اليومي</h2>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: 14,
+                marginBottom: 18
+              }}
+            >
+              <div>
+                <div style={labelStyle()}>التاريخ</div>
+                <input
+                  style={inputStyle()}
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <div style={labelStyle()}>موقع التسجيل اليوم</div>
+                <select
+                  style={inputStyle()}
+                  value={recordedSite}
+                  onChange={(e) => setRecordedSite(e.target.value)}
+                >
+                  <option value="الكل">الكل</option>
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div style={labelStyle()}>فلترة الموقع</div>
+                <select
+                  style={inputStyle()}
+                  value={siteFilter}
+                  onChange={(e) => setSiteFilter(e.target.value)}
+                >
+                  <option value="الكل">الكل</option>
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div style={labelStyle()}>بحث</div>
+                <input
+                  style={inputStyle()}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="اسم العامل أو الرقم الوظيفي"
+                />
+              </div>
+            </div>
+
+            <div
+              style={{
+                overflowX: 'auto',
+                border: '1px solid #e5e7eb',
+                borderRadius: 18,
+                background: '#fff'
+              }}
+            >
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  minWidth: 1080
+                }}
+              >
+                <thead>
+                  <tr style={{ background: '#f8fafc' }}>
+                    {['الرقم', 'الاسم', 'المسمى', 'الموقع', 'الحالة', 'الإضافي', 'ملاحظات', 'حفظ'].map((h) => (
+                      <th
+                        key={h}
+                        style={{
+                          textAlign: 'right',
+                          padding: 14,
+                          borderBottom: '1px solid #e5e7eb',
+                          color: '#334155',
+                          fontSize: 14
+                        }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {dailyRows.map((row) => (
+                    <AttendanceRow
+                      key={row.id}
+                      row={row}
+                      onSave={(payload) => saveAttendance(row.id, payload)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {tab === 'reports' && (
+          <div style={cardStyle({ borderRadius: 24 })}>
+            <h2 style={sectionTitleStyle()}>التقارير الشهرية</h2>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: 14,
+                marginBottom: 18
+              }}
+            >
+              <div>
+                <div style={labelStyle()}>الشهر</div>
+                <input
+                  style={inputStyle()}
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <div style={labelStyle()}>الموقع</div>
+                <select
+                  style={inputStyle()}
+                  value={siteFilter}
+                  onChange={(e) => setSiteFilter(e.target.value)}
+                >
+                  <option value="الكل">الكل</option>
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap' }}>
+                <button style={buttonStyle('secondary')} onClick={exportAttendanceReport}>
+                  تصدير حضور
+                </button>
+                <button style={buttonStyle('secondary')} onClick={exportPayrollReport}>
+                  تصدير رواتب
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                overflowX: 'auto',
+                border: '1px solid #e5e7eb',
+                borderRadius: 18,
+                background: '#fff'
+              }}
+            >
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  minWidth: 1250
+                }}
+              >
+                <thead>
+                  <tr style={{ background: '#f8fafc' }}>
+                    {monthlyRows[0]
+                      ? Object.keys(monthlyRows[0]).map((h) => (
+                          <th
+                            key={h}
+                            style={{
+                              textAlign: 'right',
+                              padding: 14,
+                              borderBottom: '1px solid #e5e7eb',
+                              color: '#334155',
+                              fontSize: 14
+                            }}
+                          >
+                            {h}
+                          </th>
+                        ))
+                      : <th style={{ textAlign: 'right', padding: 14 }}>لا توجد بيانات</th>}
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {monthlyRows.map((row, idx) => (
+                    <tr key={idx}>
+                      {Object.values(row).map((v, i) => (
+                        <td
+                          key={i}
+                          style={{
+                            padding: 14,
+                            borderBottom: '1px solid #f1f5f9',
+                            color: '#0f172a'
+                          }}
+                        >
+                          {v}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {tab === 'setup' && (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1.2fr 1fr',
+              gap: 16
+            }}
+          >
+            <div style={cardStyle({ borderRadius: 24 })}>
+              <h2 style={sectionTitleStyle()}>إعداد قاعدة البيانات</h2>
+
+              <div
+                style={{
+                  background: '#f8fafc',
+                  borderRadius: 16,
+                  padding: 14,
+                  whiteSpace: 'pre-wrap',
+                  fontSize: 12,
+                  lineHeight: 1.7,
+                  maxHeight: 420,
+                  overflow: 'auto',
+                  border: '1px solid #e5e7eb'
+                }}
+              >
+                {setupSql}
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+                <button style={buttonStyle()} onClick={seedDatabase} disabled={loading}>
+                  تعبئة البيانات الأساسية
+                </button>
+
+                <button
+                  style={buttonStyle('outline')}
+                  onClick={() => navigator.clipboard.writeText(setupSql).then(() => alert('تم نسخ SQL'))}
+                >
+                  نسخ SQL
+                </button>
+              </div>
+            </div>
+
+            <div style={cardStyle({ borderRadius: 24 })}>
+              <h2 style={sectionTitleStyle()}>إضافة موظف</h2>
+
+              <div style={{ display: 'grid', gap: 10 }}>
+                <input
+                  style={inputStyle()}
+                  placeholder="الرقم الوظيفي"
+                  value={newWorker.employee_no}
+                  onChange={(e) => setNewWorker({ ...newWorker, employee_no: e.target.value })}
+                />
+
+                <input
+                  style={inputStyle()}
+                  placeholder="اسم الموظف"
+                  value={newWorker.name}
+                  onChange={(e) => setNewWorker({ ...newWorker, name: e.target.value })}
+                />
+
+                <input
+                  style={inputStyle()}
+                  placeholder="المسمى الوظيفي"
+                  value={newWorker.job_title}
+                  onChange={(e) => setNewWorker({ ...newWorker, job_title: e.target.value })}
+                />
+
+                <input
+                  style={inputStyle()}
+                  placeholder="الموقع"
+                  value={newWorker.site_name}
+                  onChange={(e) => setNewWorker({ ...newWorker, site_name: e.target.value })}
+                />
+
+                <input
+                  style={inputStyle()}
+                  placeholder="نوع الأجر"
+                  value={newWorker.wage_type}
+                  onChange={(e) => setNewWorker({ ...newWorker, wage_type: e.target.value })}
+                />
+
+                <input
+                  style={inputStyle()}
+                  type="number"
+                  placeholder="الأجر اليومي"
+                  value={newWorker.daily_rate}
+                  onChange={(e) => setNewWorker({ ...newWorker, daily_rate: e.target.value })}
+                />
+
+                <button style={buttonStyle()} onClick={addWorker}>
+                  حفظ الموظف
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -582,11 +1004,12 @@ function AttendanceRow({ row, onSave }) {
 
   return (
     <tr>
-      <td style={{ padding:12, borderBottom:'1px solid #f1f5f9' }}>{row.employee_no}</td>
-      <td style={{ padding:12, borderBottom:'1px solid #f1f5f9' }}>{row.name}</td>
-      <td style={{ padding:12, borderBottom:'1px solid #f1f5f9' }}>{row.job_title}</td>
-      <td style={{ padding:12, borderBottom:'1px solid #f1f5f9' }}>{row.site_name}</td>
-      <td style={{ padding:12, borderBottom:'1px solid #f1f5f9' }}>
+      <td style={{ padding: 14, borderBottom: '1px solid #f1f5f9' }}>{row.employee_no}</td>
+      <td style={{ padding: 14, borderBottom: '1px solid #f1f5f9' }}>{row.name}</td>
+      <td style={{ padding: 14, borderBottom: '1px solid #f1f5f9' }}>{row.job_title}</td>
+      <td style={{ padding: 14, borderBottom: '1px solid #f1f5f9' }}>{row.site_name}</td>
+
+      <td style={{ padding: 14, borderBottom: '1px solid #f1f5f9' }}>
         <select style={inputStyle()} value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="حاضر">حاضر</option>
           <option value="غائب">غائب</option>
@@ -594,14 +1017,32 @@ function AttendanceRow({ row, onSave }) {
           <option value="راحة">راحة</option>
         </select>
       </td>
-      <td style={{ padding:12, borderBottom:'1px solid #f1f5f9' }}>
-        <input style={inputStyle()} type="number" min="0" value={overtime} onChange={(e) => setOvertime(e.target.value)} />
+
+      <td style={{ padding: 14, borderBottom: '1px solid #f1f5f9' }}>
+        <input
+          style={inputStyle()}
+          type="number"
+          min="0"
+          value={overtime}
+          onChange={(e) => setOvertime(e.target.value)}
+        />
       </td>
-      <td style={{ padding:12, borderBottom:'1px solid #f1f5f9' }}>
-        <input style={inputStyle()} value={notes} onChange={(e) => setNotes(e.target.value)} />
+
+      <td style={{ padding: 14, borderBottom: '1px solid #f1f5f9' }}>
+        <input
+          style={inputStyle()}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
       </td>
-      <td style={{ padding:12, borderBottom:'1px solid #f1f5f9' }}>
-        <button style={buttonStyle()} onClick={() => onSave({ status, overtime_hours: overtime, notes })}>حفظ</button>
+
+      <td style={{ padding: 14, borderBottom: '1px solid #f1f5f9' }}>
+        <button
+          style={buttonStyle()}
+          onClick={() => onSave({ status, overtime_hours: overtime, notes })}
+        >
+          حفظ
+        </button>
       </td>
     </tr>
   )

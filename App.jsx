@@ -5,6 +5,37 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null
 
+const appUsers = [
+  {
+    username: 'yasserkhallaf',
+    password_hash: 'd1b39203547a4ae06260a3c3f4f6b1c8e218e3518de869d4bfa899f6ebed3d8d',
+    display_name: 'ياسر خلاف',
+    role: 'admin',
+    site_scope: 'الكل'
+  },
+  {
+    username: 'Ahmed208',
+    password_hash: 'aae9ee5b6b7b41c2528dec1714e2b385d69b8c7dde33e6fea8c8973a99a49c7a',
+    display_name: 'أحمد الصعيدي',
+    role: 'supervisor',
+    site_scope: 'فجر الطرق'
+  },
+  {
+    username: 'Mostafaelfwe',
+    password_hash: 'f3b0bcb03688d953b52596ceba8e7f04f9ef41231a2f56e354c1e9dd4084a262',
+    display_name: 'مصطفى الفوي',
+    role: 'supervisor',
+    site_scope: 'كدمي جازان'
+  },
+  {
+    username: 'Dhurma Project',
+    password_hash: '9a4ad8033839a886928cbe17a09db4d005efa540180e5841ad434c7c73c0b650',
+    display_name: 'مشرف مشروع ضرما',
+    role: 'supervisor',
+    site_scope: 'ضرما'
+  }
+]
+
 const seedWorkers = [
   { employee_no: "1001", name: "مصطفى حسن عبد المتعال الفوي", job_title: "مهندس", site_name: "كدمي جازان", wage_type: "شهري", daily_rate: 30 },
   { employee_no: "1002", name: "إبراهيم اسعد امين محمود", job_title: "مهندس", site_name: "ضرما", wage_type: "شهري", daily_rate: 30 },
@@ -37,11 +68,18 @@ const setupSql = `create extension if not exists pgcrypto;
 create table if not exists public.users_profile (
   id uuid primary key default gen_random_uuid(),
   username text unique not null,
-  password text not null,
+  password text,
+  password_hash text,
   display_name text not null,
   role text not null check (role in ('admin','supervisor')),
+  site_scope text default 'الكل',
   created_at timestamptz default now()
 );
+
+alter table public.users_profile add column if not exists password text;
+alter table public.users_profile alter column password drop not null;
+alter table public.users_profile add column if not exists password_hash text;
+alter table public.users_profile add column if not exists site_scope text default 'الكل';
 
 create table if not exists public.sites (
   id uuid primary key default gen_random_uuid(),
@@ -74,13 +112,30 @@ create table if not exists public.attendance (
   unique(attendance_date, worker_id)
 );
 
-insert into public.users_profile (username, password, display_name, role)
+delete from public.users_profile
+where username in ('admin','dharma','hanakya','kdmi');
+
+insert into public.users_profile (username, password_hash, display_name, role, site_scope)
 values
-  ('admin','1234','مدير النظام','admin'),
-  ('dharma','1234','مشرف ضرما','supervisor'),
-  ('hanakya','1234','مشرف الحناكية','supervisor'),
-  ('kdmi','1234','مشرف كدمي','supervisor')
-on conflict (username) do nothing;`
+  ('yasserkhallaf','d1b39203547a4ae06260a3c3f4f6b1c8e218e3518de869d4bfa899f6ebed3d8d','ياسر خلاف','admin','الكل'),
+  ('Ahmed208','aae9ee5b6b7b41c2528dec1714e2b385d69b8c7dde33e6fea8c8973a99a49c7a','أحمد الصعيدي','supervisor','فجر الطرق'),
+  ('Mostafaelfwe','f3b0bcb03688d953b52596ceba8e7f04f9ef41231a2f56e354c1e9dd4084a262','مصطفى الفوي','supervisor','كدمي جازان'),
+  ('Dhurma Project','9a4ad8033839a886928cbe17a09db4d005efa540180e5841ad434c7c73c0b650','مشرف مشروع ضرما','supervisor','ضرما')
+on conflict (username) do update set
+  password_hash = excluded.password_hash,
+  display_name = excluded.display_name,
+  role = excluded.role,
+  site_scope = excluded.site_scope;
+
+insert into public.sites (name)
+values
+  ('كدمي جازان'),
+  ('ضرما'),
+  ('فجر الطرق'),
+  ('المحاني'),
+  ('غير محدد'),
+  ('عبد الاله')
+on conflict (name) do nothing;`
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10)
@@ -88,6 +143,15 @@ function todayStr() {
 
 function monthStr() {
   return new Date().toISOString().slice(0, 7)
+}
+
+async function sha256(text) {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(text)
+  const hashBuffer = await window.crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
 }
 
 function exportCsv(filename, rows) {
@@ -98,11 +162,12 @@ function exportCsv(filename, rows) {
 
   const headers = Object.keys(rows[0])
   const csv = [
-  headers.join(';'),
-  ...rows.map((row) =>
-    headers.map((h) => `"${String(row[h] ?? '').replaceAll('"', '""')}"`).join(';')
-  )
-].join('\n')
+    headers.join(';'),
+    ...rows.map((row) =>
+      headers.map((h) => `"${String(row[h] ?? '').replaceAll('"', '""')}"`).join(';')
+    )
+  ].join('\n')
+
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -142,7 +207,8 @@ function inputStyle() {
     background: '#ffffff',
     outline: 'none',
     fontSize: 14,
-    color: '#111827'
+    color: '#111827',
+    boxSizing: 'border-box'
   }
 }
 
@@ -169,6 +235,7 @@ function buttonStyle(kind = 'primary') {
   if (kind === 'secondary') return { ...common, background: '#e9eef6', color: '#0f172a' }
   if (kind === 'outline') return { ...common, background: '#fff', color: '#111827', border: '1px solid #d6dce8' }
   if (kind === 'danger') return { ...common, background: '#dc2626', color: '#fff' }
+  if (kind === 'success') return { ...common, background: '#16a34a', color: '#fff' }
 
   return { ...common, background: '#0f172a', color: '#fff' }
 }
@@ -183,11 +250,15 @@ function sectionTitleStyle() {
   }
 }
 
-function Tabs({ active, setActive }) {
+function Tabs({ active, setActive, user }) {
   const tabs = [
     ['attendance', 'تسجيل الحضور'],
-    ['reports', 'التقارير'],
-    ['setup', 'الإعداد']
+    ...(user?.role === 'admin'
+      ? [
+          ['reports', 'التقارير'],
+          ['setup', 'الإعداد']
+        ]
+      : [])
   ]
 
   return (
@@ -225,6 +296,7 @@ export default function App() {
   const [workers, setWorkers] = useState([])
   const [attendance, setAttendance] = useState([])
   const [loading, setLoading] = useState(false)
+  const [saveState, setSaveState] = useState({})
 
   const [selectedDate, setSelectedDate] = useState(todayStr())
   const [selectedMonth, setSelectedMonth] = useState(monthStr())
@@ -242,10 +314,38 @@ export default function App() {
 
   const envReady = Boolean(supabase)
 
+  const supervisorSite = user?.role === 'supervisor' && user?.site_scope && user.site_scope !== 'الكل'
+    ? user.site_scope
+    : null
+
+  const visibleSites = useMemo(() => {
+    if (!supervisorSite) return sites
+    return sites.filter((s) => s.name === supervisorSite)
+  }, [sites, supervisorSite])
+
   useEffect(() => {
-    const savedUser = localStorage.getItem('fajr_user_v3')
-    if (savedUser) setUser(JSON.parse(savedUser))
+    const savedUser = localStorage.getItem('fajr_user_v4')
+    if (savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser)
+        setUser(parsed)
+        if (parsed.role === 'supervisor' && parsed.site_scope && parsed.site_scope !== 'الكل') {
+          setSiteFilter(parsed.site_scope)
+          setRecordedSite(parsed.site_scope)
+        }
+      } catch {
+        localStorage.removeItem('fajr_user_v4')
+      }
+    }
   }, [])
+
+  useEffect(() => {
+    if (user?.role === 'supervisor' && user?.site_scope && user.site_scope !== 'الكل') {
+      setSiteFilter(user.site_scope)
+      setRecordedSite(user.site_scope)
+      setTab('attendance')
+    }
+  }, [user])
 
   useEffect(() => {
     if (user && envReady) {
@@ -269,22 +369,43 @@ export default function App() {
     if (!workersRes.error) setWorkers(workersRes.data || [])
     if (!attendanceRes.error) setAttendance(attendanceRes.data || [])
 
+    if (sitesRes.error || workersRes.error || attendanceRes.error) {
+      alert('يوجد مشكلة في الاتصال بقاعدة البيانات. راجع SQL والجداول.')
+    }
+
     setLoading(false)
   }
 
   async function handleLogin() {
+    setLoginErr('')
+
     if (!envReady) {
       setLoginErr('متغيرات Supabase غير مضافة')
       return
     }
 
+    const username = login.username.trim()
+    const password = login.password
+
+    if (!username || !password) {
+      setLoginErr('اكتب اسم المستخدم وكلمة المرور')
+      return
+    }
+
     const { data, error } = await supabase
       .from('users_profile')
-      .select('username, password, display_name, role')
-      .eq('username', login.username)
+      .select('username, password_hash, display_name, role, site_scope')
+      .eq('username', username)
       .single()
 
-    if (error || !data || data.password !== login.password) {
+    if (error || !data || !data.password_hash) {
+      setLoginErr('بيانات الدخول غير صحيحة أو لم يتم تنفيذ SQL الجديد')
+      return
+    }
+
+    const enteredHash = await sha256(password)
+
+    if (enteredHash !== data.password_hash) {
       setLoginErr('بيانات الدخول غير صحيحة')
       return
     }
@@ -292,35 +413,44 @@ export default function App() {
     const logged = {
       username: data.username,
       name: data.display_name,
-      role: data.role
+      role: data.role,
+      site_scope: data.site_scope || 'الكل'
     }
 
     setUser(logged)
-    localStorage.setItem('fajr_user_v3', JSON.stringify(logged))
+    localStorage.setItem('fajr_user_v4', JSON.stringify(logged))
     setLoginErr('')
   }
 
   function logout() {
     setUser(null)
-    localStorage.removeItem('fajr_user_v3')
+    setTab('attendance')
+    localStorage.removeItem('fajr_user_v4')
   }
 
   async function seedDatabase() {
-    if (!envReady) return
+    if (!envReady || user?.role !== 'admin') return
 
     setLoading(true)
+
     const uniqueSites = [...new Set(seedWorkers.map((w) => w.site_name).filter(Boolean))].map((name) => ({ name }))
 
     await supabase.from('sites').upsert(uniqueSites, { onConflict: 'name' })
     await supabase.from('workers').upsert(seedWorkers, { onConflict: 'employee_no' })
+    await supabase.from('users_profile').upsert(appUsers, { onConflict: 'username' })
 
     await loadAll()
     setLoading(false)
-    alert('تمت تعبئة البيانات الأساسية')
+    alert('تمت تعبئة البيانات الأساسية والحسابات')
   }
 
   async function addWorker() {
-    if (!envReady) return
+    if (!envReady || user?.role !== 'admin') return
+
+    if (!newWorker.employee_no || !newWorker.name) {
+      alert('اكتب الرقم الوظيفي واسم الموظف')
+      return
+    }
 
     const payload = {
       employee_no: newWorker.employee_no,
@@ -356,6 +486,17 @@ export default function App() {
     if (!envReady) return
 
     const worker = workers.find((w) => w.id === workerId)
+    if (!worker) return
+
+    if (supervisorSite && worker.site_name !== supervisorSite) {
+      alert('هذا الحساب غير مصرح له بتسجيل هذا الموقع')
+      return
+    }
+
+    setSaveState((prev) => ({
+      ...prev,
+      [workerId]: 'saving'
+    }))
 
     const payload = {
       attendance_date: selectedDate,
@@ -364,7 +505,7 @@ export default function App() {
       overtime_hours: Number(current.overtime_hours || 0),
       notes: current.notes || '',
       supervisor_username: user?.username || '',
-      recorded_site: recordedSite === 'الكل' ? (worker?.site_name || '') : recordedSite
+      recorded_site: supervisorSite || (recordedSite === 'الكل' ? (worker?.site_name || '') : recordedSite)
     }
 
     const { error } = await supabase
@@ -372,20 +513,37 @@ export default function App() {
       .upsert(payload, { onConflict: 'attendance_date,worker_id' })
 
     if (error) {
-      alert(error.message)
+      setSaveState((prev) => ({
+        ...prev,
+        [workerId]: 'error'
+      }))
+      alert('فشل الحفظ: ' + error.message)
       return
     }
 
     await loadAll()
+
+    setSaveState((prev) => ({
+      ...prev,
+      [workerId]: 'saved'
+    }))
+
+    setTimeout(() => {
+      setSaveState((prev) => ({
+        ...prev,
+        [workerId]: ''
+      }))
+    }, 2500)
   }
 
   const visibleWorkers = useMemo(() => {
     return workers.filter((w) => {
       const matchesSearch = !search || w.name?.includes(search) || w.employee_no?.includes(search)
-      const matchesSite = siteFilter === 'الكل' || w.site_name === siteFilter
-      return matchesSearch && matchesSite && w.is_active !== false
+      const matchesSiteByUser = !supervisorSite || w.site_name === supervisorSite
+      const matchesSiteByFilter = supervisorSite || siteFilter === 'الكل' || w.site_name === siteFilter
+      return matchesSearch && matchesSiteByUser && matchesSiteByFilter && w.is_active !== false
     })
-  }, [workers, search, siteFilter])
+  }, [workers, search, siteFilter, supervisorSite])
 
   const dailyRows = useMemo(() => {
     return visibleWorkers.map((worker) => {
@@ -409,7 +567,8 @@ export default function App() {
     filtered.forEach((a) => {
       const w = a.workers
       if (!w) return
-      if (siteFilter !== 'الكل' && w.site_name !== siteFilter) return
+      if (supervisorSite && w.site_name !== supervisorSite) return
+      if (!supervisorSite && siteFilter !== 'الكل' && w.site_name !== siteFilter) return
 
       const key = a.worker_id
 
@@ -441,7 +600,7 @@ export default function App() {
       ...r,
       الإجمالي: r.أيام_الحضور * r.الأجر_اليومي + r.ساعات_إضافية * 5
     }))
-  }, [attendance, selectedMonth, siteFilter])
+  }, [attendance, selectedMonth, siteFilter, supervisorSite])
 
   const stats = useMemo(() => ({
     workers: visibleWorkers.length,
@@ -451,6 +610,8 @@ export default function App() {
   }), [visibleWorkers, monthlyRows])
 
   function exportAttendanceReport() {
+    if (user?.role !== 'admin') return
+
     const rows = attendance
       .filter((a) => a.attendance_date?.startsWith(selectedMonth))
       .filter((a) => siteFilter === 'الكل' || a.workers?.site_name === siteFilter)
@@ -469,12 +630,14 @@ export default function App() {
   }
 
   function exportPayrollReport() {
+    if (user?.role !== 'admin') return
     exportCsv(`payroll-${selectedMonth}.csv`, monthlyRows)
   }
 
   if (!user) {
     return (
       <div
+        dir="rtl"
         style={{
           minHeight: '100vh',
           display: 'grid',
@@ -544,6 +707,7 @@ export default function App() {
               placeholder="اسم المستخدم"
               value={login.username}
               onChange={(e) => setLogin({ ...login, username: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
             />
 
             <input
@@ -552,6 +716,7 @@ export default function App() {
               placeholder="كلمة المرور"
               value={login.password}
               onChange={(e) => setLogin({ ...login, password: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
             />
 
             {loginErr ? (
@@ -581,6 +746,13 @@ export default function App() {
               دخول
             </button>
 
+            <button
+              style={buttonStyle('outline')}
+              onClick={() => navigator.clipboard.writeText(setupSql).then(() => alert('تم نسخ SQL'))}
+            >
+              نسخ SQL أول مرة
+            </button>
+
             <div style={{ marginTop: 6, fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
               Design by Yasser Khallaf
             </div>
@@ -592,6 +764,7 @@ export default function App() {
 
   return (
     <div
+      dir="rtl"
       style={{
         minHeight: '100vh',
         background: '#f5f7fb',
@@ -626,16 +799,23 @@ export default function App() {
               </h1>
               <div style={{ color: '#64748b', fontSize: 15 }}>
                 مرحبًا {user.name}
+                {user.role === 'supervisor' && user.site_scope && user.site_scope !== 'الكل'
+                  ? ` — موقعك: ${user.site_scope}`
+                  : ' — حساب رئيسي'}
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button style={buttonStyle('secondary')} onClick={exportAttendanceReport}>
-                تصدير الحضور
-              </button>
-              <button style={buttonStyle('secondary')} onClick={exportPayrollReport}>
-                تصدير الرواتب
-              </button>
+              {user.role === 'admin' && (
+                <>
+                  <button style={buttonStyle('secondary')} onClick={exportAttendanceReport}>
+                    تصدير الحضور
+                  </button>
+                  <button style={buttonStyle('secondary')} onClick={exportPayrollReport}>
+                    تصدير الرواتب
+                  </button>
+                </>
+              )}
               <button style={buttonStyle('outline')} onClick={logout}>
                 خروج
               </button>
@@ -668,12 +848,12 @@ export default function App() {
 
           <div style={statCardStyle()}>
             <div style={{ color: '#64748b', fontWeight: 700 }}>إجمالي المستحق</div>
-            <NumberValue value={stats.payroll} />
+            <NumberValue value={user.role === 'admin' ? stats.payroll : '-'} />
           </div>
         </div>
 
         <div style={{ ...cardStyle({ marginBottom: 16, padding: 14 }) }}>
-          <Tabs active={tab} setActive={setTab} />
+          <Tabs active={tab} setActive={setTab} user={user} />
         </div>
 
         {tab === 'attendance' && (
@@ -702,11 +882,12 @@ export default function App() {
                 <div style={labelStyle()}>موقع التسجيل اليوم</div>
                 <select
                   style={inputStyle()}
-                  value={recordedSite}
+                  value={supervisorSite || recordedSite}
                   onChange={(e) => setRecordedSite(e.target.value)}
+                  disabled={Boolean(supervisorSite)}
                 >
-                  <option value="الكل">الكل</option>
-                  {sites.map((s) => (
+                  {!supervisorSite && <option value="الكل">الكل</option>}
+                  {visibleSites.map((s) => (
                     <option key={s.id} value={s.name}>{s.name}</option>
                   ))}
                 </select>
@@ -716,11 +897,12 @@ export default function App() {
                 <div style={labelStyle()}>فلترة الموقع</div>
                 <select
                   style={inputStyle()}
-                  value={siteFilter}
+                  value={supervisorSite || siteFilter}
                   onChange={(e) => setSiteFilter(e.target.value)}
+                  disabled={Boolean(supervisorSite)}
                 >
-                  <option value="الكل">الكل</option>
-                  {sites.map((s) => (
+                  {!supervisorSite && <option value="الكل">الكل</option>}
+                  {visibleSites.map((s) => (
                     <option key={s.id} value={s.name}>{s.name}</option>
                   ))}
                 </select>
@@ -736,6 +918,12 @@ export default function App() {
                 />
               </div>
             </div>
+
+            {loading && (
+              <div style={{ marginBottom: 12, color: '#64748b', fontWeight: 700 }}>
+                جاري تحميل البيانات...
+              </div>
+            )}
 
             <div
               style={{
@@ -776,16 +964,25 @@ export default function App() {
                     <AttendanceRow
                       key={row.id}
                       row={row}
+                      saveState={saveState[row.id]}
                       onSave={(payload) => saveAttendance(row.id, payload)}
                     />
                   ))}
+
+                  {!dailyRows.length && (
+                    <tr>
+                      <td colSpan="8" style={{ padding: 20, textAlign: 'center', color: '#64748b' }}>
+                        لا توجد بيانات للعرض
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {tab === 'reports' && (
+        {tab === 'reports' && user.role === 'admin' && (
           <div style={cardStyle({ borderRadius: 24 })}>
             <h2 style={sectionTitleStyle()}>التقارير الشهرية</h2>
 
@@ -890,7 +1087,7 @@ export default function App() {
           </div>
         )}
 
-        {tab === 'setup' && (
+        {tab === 'setup' && user.role === 'admin' && (
           <div
             style={{
               display: 'grid',
@@ -911,7 +1108,9 @@ export default function App() {
                   lineHeight: 1.7,
                   maxHeight: 420,
                   overflow: 'auto',
-                  border: '1px solid #e5e7eb'
+                  border: '1px solid #e5e7eb',
+                  direction: 'ltr',
+                  textAlign: 'left'
                 }}
               >
                 {setupSql}
@@ -919,7 +1118,7 @@ export default function App() {
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
                 <button style={buttonStyle()} onClick={seedDatabase} disabled={loading}>
-                  تعبئة البيانات الأساسية
+                  تعبئة البيانات الأساسية والحسابات
                 </button>
 
                 <button
@@ -990,7 +1189,7 @@ export default function App() {
   )
 }
 
-function AttendanceRow({ row, onSave }) {
+function AttendanceRow({ row, onSave, saveState }) {
   const [status, setStatus] = useState(row.status || 'حاضر')
   const [overtime, setOvertime] = useState(row.overtime_hours || 0)
   const [notes, setNotes] = useState(row.notes || '')
@@ -1002,9 +1201,9 @@ function AttendanceRow({ row, onSave }) {
   }, [row.status, row.overtime_hours, row.notes])
 
   return (
-    <tr>
+    <tr style={{ background: saveState === 'saved' ? '#f0fdf4' : '#fff' }}>
       <td style={{ padding: 14, borderBottom: '1px solid #f1f5f9' }}>{row.employee_no}</td>
-      <td style={{ padding: 14, borderBottom: '1px solid #f1f5f9' }}>{row.name}</td>
+      <td style={{ padding: 14, borderBottom: '1px solid #f1f5f9', fontWeight: 700 }}>{row.name}</td>
       <td style={{ padding: 14, borderBottom: '1px solid #f1f5f9' }}>{row.job_title}</td>
       <td style={{ padding: 14, borderBottom: '1px solid #f1f5f9' }}>{row.site_name}</td>
 
@@ -1032,15 +1231,34 @@ function AttendanceRow({ row, onSave }) {
           style={inputStyle()}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
+          placeholder="ملاحظات"
         />
       </td>
 
       <td style={{ padding: 14, borderBottom: '1px solid #f1f5f9' }}>
         <button
-          style={buttonStyle()}
+          style={{
+            ...buttonStyle(
+              saveState === 'saved'
+                ? 'success'
+                : saveState === 'error'
+                  ? 'danger'
+                  : 'primary'
+            ),
+            opacity: saveState === 'saving' ? 0.7 : 1,
+            cursor: saveState === 'saving' ? 'not-allowed' : 'pointer',
+            minWidth: 118
+          }}
+          disabled={saveState === 'saving'}
           onClick={() => onSave({ status, overtime_hours: overtime, notes })}
         >
-          حفظ
+          {saveState === 'saving'
+            ? 'جاري الحفظ...'
+            : saveState === 'saved'
+              ? '✅ تم الحفظ'
+              : saveState === 'error'
+                ? 'إعادة الحفظ'
+                : 'حفظ'}
         </button>
       </td>
     </tr>

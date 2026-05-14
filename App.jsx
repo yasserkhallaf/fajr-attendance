@@ -5,7 +5,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null
 
-const APP_VERSION = 'FAJR-ATTENDANCE-V8'
+const APP_VERSION = 'FAJR-ATTENDANCE-V9-EXCEL-PAYROLL'
 
 const defaultUsers = [
   {
@@ -205,23 +205,61 @@ async function sha256(text) {
     .join('')
 }
 
-function exportCsv(filename, rows) {
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('\"', '&quot;')
+    .replaceAll("'", '&#039;')
+}
+
+function excelValue(value) {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  const text = String(value)
+  const safeText = /^[=+\-@]/.test(text) ? `'${text}` : text
+  return escapeHtml(safeText)
+}
+
+function exportExcel(filename, rows, sheetTitle = 'تقرير') {
   if (!rows.length) {
     alert('لا توجد بيانات للتصدير')
     return
   }
+  const safeFilename = filename.endsWith('.xls') ? filename : `${filename}.xls`
   const headers = Object.keys(rows[0])
-  const csv = [
-    headers.join(';'),
-    ...rows.map((row) =>
-      headers.map((h) => `"${String(row[h] ?? '').replaceAll('"', '""')}"`).join(';')
-    ),
-  ].join('\n')
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const html = `
+    <html dir="rtl">
+      <head>
+        <meta charset="UTF-8" />
+        <style>
+          body { font-family: Tahoma, Arial, sans-serif; direction: rtl; }
+          table { border-collapse: collapse; width: 100%; }
+          th { background: #dbeafe; color: #0f172a; font-weight: bold; }
+          th, td { border: 1px solid #94a3b8; padding: 8px; text-align: right; vertical-align: middle; }
+          tr:nth-child(even) td { background: #f8fafc; }
+          .title { font-size: 18px; font-weight: bold; margin-bottom: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="title">${escapeHtml(sheetTitle)}</div>
+        <table>
+          <thead>
+            <tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join('')}</tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `<tr>${headers.map((h) => `<td>${excelValue(row[h])}</td>`).join('')}</tr>`).join('')}
+          </tbody>
+        </table>
+      </body>
+    </html>
+  `
+  const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = filename
+  a.download = safeFilename
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -866,11 +904,47 @@ export default function App() {
         المشرف: a.supervisor_username || '',
         ملاحظات: a.notes || '',
       }))
-    exportCsv(`attendance-${selectedMonth}.csv`, rows)
+    exportExcel(`attendance-${selectedMonth}.xls`, rows, `تقرير الحضور - ${selectedMonth}`)
   }
 
   function exportPayrollReport() {
-    exportCsv(`monthly-summary-${selectedMonth}.csv`, monthlyRows)
+    const rows = monthlyRows.map((r, index) => ({
+      مسلسل: index + 1,
+      الرقم_الوظيفي: r.الرقم_الوظيفي,
+      الاسم: r.الاسم,
+      المسمى: r.المسمى,
+      الموقع: r.الموقع,
+      أيام_حضور: r.حاضر,
+      أيام_غياب: r.غائب,
+      أيام_إجازة: r.إجازة,
+      أيام_راحة: r.راحة,
+      ساعات_إضافية: r.ساعات_إضافية,
+      الأجر_اليومي: r.الأجر_اليومي,
+      قيمة_الأيام: Number((r.حاضر * r.الأجر_اليومي).toFixed(2)),
+      قيمة_الإضافي: Number((r.ساعات_إضافية * 5).toFixed(2)),
+      إجمالي_المستحق: r.الإجمالي,
+    }))
+    const total = rows.reduce((sum, r) => sum + Number(r.إجمالي_المستحق || 0), 0)
+    const overtimeTotal = rows.reduce((sum, r) => sum + Number(r.ساعات_إضافية || 0), 0)
+    if (rows.length) {
+      rows.push({
+        مسلسل: '',
+        الرقم_الوظيفي: '',
+        الاسم: 'الإجمالي',
+        المسمى: '',
+        الموقع: siteFilter === 'الكل' ? 'كل المواقع' : siteFilter,
+        أيام_حضور: rows.reduce((sum, r) => sum + Number(r.أيام_حضور || 0), 0),
+        أيام_غياب: rows.reduce((sum, r) => sum + Number(r.أيام_غياب || 0), 0),
+        أيام_إجازة: rows.reduce((sum, r) => sum + Number(r.أيام_إجازة || 0), 0),
+        أيام_راحة: rows.reduce((sum, r) => sum + Number(r.أيام_راحة || 0), 0),
+        ساعات_إضافية: Number(overtimeTotal.toFixed(2)),
+        الأجر_اليومي: '',
+        قيمة_الأيام: '',
+        قيمة_الإضافي: '',
+        إجمالي_المستحق: Number(total.toFixed(2)),
+      })
+    }
+    exportExcel(`payroll-${selectedMonth}.xls`, rows, `كشف الرواتب - ${selectedMonth}`)
   }
 
   function exportEmployees() {
@@ -885,7 +959,7 @@ export default function App() {
       الهوية: w.national_id || '',
       الحالة: w.is_active === false ? 'موقوف' : 'نشط',
     }))
-    exportCsv('employees.csv', rows)
+    exportExcel('employees.xls', rows, 'بيان الموظفين')
   }
 
   function exportDailyReports() {
@@ -899,7 +973,7 @@ export default function App() {
       ملاحظات: r.notes || '',
       الصور: Array.isArray(r.image_urls) ? r.image_urls.join(' | ') : '',
     }))
-    exportCsv('daily-reports.csv', rows)
+    exportExcel('daily-reports.xls', rows, 'التقارير اليومية')
   }
 
   async function seedUsers() {
@@ -967,10 +1041,27 @@ export default function App() {
         {tab === 'dashboard' && (
           <section>
             <PageTitle hint="ملخص سريع عن الحضور والتقارير حسب التاريخ المختار">الرئيسية</PageTitle>
-            <div style={cardStyle({ marginBottom: 14 })}>
+            <div style={cardStyle({ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 14 })}>
               <Field label="تاريخ المتابعة">
-                <input type="date" style={inputStyle({ maxWidth: 260 })} value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
+                <input type="date" style={inputStyle()} value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
               </Field>
+              {user.role === 'admin' ? (
+                <>
+                  <Field label="شهر الرواتب">
+                    <input type="month" style={inputStyle()} value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} />
+                  </Field>
+                  <Field label="موقع الرواتب">
+                    <select style={inputStyle()} value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
+                      <option>الكل</option>
+                      {sites.map((s) => <option key={s.id}>{s.name}</option>)}
+                    </select>
+                  </Field>
+                  <div style={{ alignSelf: 'end', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button style={buttonStyle('success')} onClick={exportPayrollReport}>تصدير الرواتب Excel</button>
+                    <button style={buttonStyle('outline')} onClick={exportAttendanceReport}>تصدير الحضور Excel</button>
+                  </div>
+                </>
+              ) : null}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14 }}>
               <Stat title="إجمالي النشطين" value={dashboard.totalWorkers} />
@@ -1226,7 +1317,7 @@ export default function App() {
 
         {tab === 'reports' && user.role === 'admin' && (
           <section>
-            <PageTitle hint="ملخص شهري وتصدير Excel بصيغة CSV تفتح في Excel.">التقارير</PageTitle>
+            <PageTitle hint="ملخص شهري وتصدير ملفات Excel كجداول منسقة.">التقارير</PageTitle>
             <div style={cardStyle({ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 14 })}>
               <Field label="الشهر">
                 <input type="month" style={inputStyle()} value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} />
@@ -1238,8 +1329,8 @@ export default function App() {
                 </select>
               </Field>
               <div style={{ alignSelf: 'end', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button style={buttonStyle('outline')} onClick={exportAttendanceReport}>تصدير الحضور</button>
-                <button style={buttonStyle('outline')} onClick={exportPayrollReport}>تصدير الملخص</button>
+                <button style={buttonStyle('outline')} onClick={exportAttendanceReport}>تصدير الحضور Excel</button>
+                <button style={buttonStyle('outline')} onClick={exportPayrollReport}>تصدير الرواتب Excel</button>
               </div>
             </div>
             <div style={cardStyle({ overflowX: 'auto' })}>
